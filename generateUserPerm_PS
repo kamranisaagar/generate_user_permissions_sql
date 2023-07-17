@@ -1,104 +1,107 @@
-param(
-    [Parameter(Mandatory=$true)]
-    [string]$username,
-    [Parameter(Mandatory=$true)]
-    [string]$hostname
-)
+param( 
+    [Parameter(Mandatory=$true)] 
+    [string]$hostname 
+) 
 
-$connectionString = "Server=$hostname;Database=master;Integrated Security=True;"
-$connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+while ($true) {
+    $username = Read-Host -Prompt 'Input the username'
 
-$command = $connection.CreateCommand()
-$command.CommandText = "SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb');"
+    $connectionString = "Server=$hostname;Database=master;Integrated Security=True;" 
+    $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString) 
 
-$databases = @()
+    $command = $connection.CreateCommand() 
+    $command.CommandText = "SELECT name FROM sys.databases WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb');" 
 
-try {
-    $connection.Open()
-    $reader = $command.ExecuteReader()
+    $databases = @() 
 
-    while ($reader.Read()) {
-        $databases += $reader["name"]
-    }
-} finally {
-    $connection.Close()
-}
+    try { 
+        $connection.Open() 
+        $reader = $command.ExecuteReader() 
 
-foreach ($dbname in $databases) {
-    $connectionString = "Server=$hostname;Database=$dbname;Integrated Security=True;"
-    $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString)
+        while ($reader.Read()) { 
+            $databases += $reader["name"] 
+        } 
+    } finally { 
+        $connection.Close() 
+    } 
 
-    $command = $connection.CreateCommand()
-    $command.CommandText = @"
-    DECLARE @UserName sysname = '$username';
-    DECLARE @SQL nvarchar(max) = '';
-    DECLARE @UserExists bit;
-    DECLARE @DatabaseName sysname = DB_NAME(); -- Get the current database name
+    foreach ($dbname in $databases) { 
+        $connectionString = "Server=$hostname;Database=$dbname;Integrated Security=True;" 
+        $connection = New-Object System.Data.SqlClient.SqlConnection($connectionString) 
 
-    SET @UserExists = 0;
-    SET @SQL = '';
+        $command = $connection.CreateCommand() 
 
-    SET @SQL = 'SELECT @UserExists = 1   
-                FROM sys.database_principals   
-                WHERE name = ''' + @UserName + ''';';  
+        $command.CommandText = @"
+        DECLARE @UserName sysname = '$username'; 
+        DECLARE @SQL nvarchar(max) = ''; 
+        DECLARE @UserExists bit; 
+        DECLARE @DatabaseName sysname = DB_NAME(); 
 
-    EXEC sp_executesql @SQL, N'@UserExists bit OUTPUT', @UserExists = @UserExists OUTPUT;
+        SET @UserExists = 0; 
+        SET @SQL = ''; 
 
-    IF @UserExists = 1  
-    BEGIN  
-        SET @SQL = '';
+        SET @SQL = 'SELECT @UserExists = 1    
+                    FROM sys.database_principals    
+                    WHERE name = ''' + @UserName + ''';';   
 
-        SELECT  
-            @SQL = @SQL + 'EXEC sp_addrolemember ''' + USER_NAME(rm.role_principal_id) + ''', ''' + @UserName + ''';' + CHAR(13)  
-        FROM  
-            sys.database_role_members rm  
-        WHERE  
-            rm.member_principal_id = USER_ID(@UserName);  
+        EXEC sp_executesql @SQL, N'@UserExists bit OUTPUT', @UserExists = @UserExists OUTPUT; 
 
-        SELECT  
-            @SQL = @SQL + 'GRANT ' + dp.permission_name + ' ON ' + QUOTENAME(s.name) + '.' + QUOTENAME(o.name) + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)  
-        FROM  
-            sys.database_permissions dp  
-            JOIN sys.objects o ON dp.major_id = o.object_id  
-            JOIN sys.schemas s ON o.schema_id = s.schema_id  
-        WHERE  
-            dp.grantee_principal_id = USER_ID(@UserName)  
-            AND dp.class = 1;
+        IF @UserExists = 1   
+        BEGIN   
+            SET @SQL = ''; 
 
-        SELECT  
-            @SQL = @SQL + 'GRANT ' + dp.permission_name + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)  
-        FROM  
-            sys.database_permissions dp  
-        WHERE  
-            dp.grantee_principal_id = USER_ID(@UserName)  
-            AND dp.class = 0;  
+            SELECT   
+                @SQL = @SQL + 'EXEC sp_addrolemember ''' + USER_NAME(rm.role_principal_id) + ''', ''' + @UserName + ''';' + CHAR(13)   
+            FROM   
+                sys.database_role_members rm   
+            WHERE   
+                rm.member_principal_id = USER_ID(@UserName);   
 
-        SELECT  
-            @SQL = @SQL + 'GRANT ' + dp.permission_name + ' ON SCHEMA::' + QUOTENAME(s.name) + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)  
-        FROM  
-            sys.database_permissions dp  
-            JOIN sys.schemas s ON dp.major_id = s.schema_id  
-        WHERE  
-            dp.grantee_principal_id = USER_ID(@UserName)  
-            AND dp.class = 3;
+            SELECT   
+                @SQL = @SQL + 'GRANT ' + dp.permission_name + ' ON ' + QUOTENAME(s.name) + '.' + QUOTENAME(o.name) + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)   
+            FROM   
+                sys.database_permissions dp   
+                JOIN sys.objects o ON dp.major_id = o.object_id   
+                JOIN sys.schemas s ON o.schema_id = s.schema_id   
+            WHERE   
+                dp.grantee_principal_id = USER_ID(@UserName)   
+                AND dp.class = 1; 
 
-        SELECT @DatabaseName AS DatabaseName, @SQL AS Sql;
-    END
+            SELECT   
+                @SQL = @SQL + 'GRANT ' + dp.permission_name + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)   
+            FROM   
+                sys.database_permissions dp   
+            WHERE   
+                dp.grantee_principal_id = USER_ID(@UserName)   
+                AND dp.class = 0;   
+
+            SELECT   
+                @SQL = @SQL + 'GRANT ' + dp.permission_name + ' ON SCHEMA::' + QUOTENAME(s.name) + ' TO ' + QUOTENAME(@UserName) + ';' + CHAR(13)   
+            FROM   
+                sys.database_permissions dp   
+                JOIN sys.schemas s ON dp.major_id = s.schema_id   
+            WHERE   
+                dp.grantee_principal_id = USER_ID(@UserName)   
+                AND dp.class = 3; 
+
+            SELECT @DatabaseName AS DatabaseName, @SQL AS Sql; 
+        END 
 "@
 
-    try {
-        $connection.Open()
-        $reader = $command.ExecuteReader()
+        try { 
+            $connection.Open() 
+            $reader = $command.ExecuteReader() 
 
-        while ($reader.Read()) {
-			Write-Output ""
-            Write-Output "USE [$($reader["DatabaseName"])];"
-            $sql = $reader["Sql"] -split "\r"
-            foreach ($line in $sql) {
-                Write-Output $line
-            }
-        }
-    } finally {
-        $connection.Close()
-    }
+            while ($reader.Read()) { 
+                Write-Output "" 
+                Write-Output "USE [$($reader["DatabaseName"])];" 
+                $sql = $reader["Sql"] -split "\r" 
+                foreach ($line in $sql) { 
+                    Write-Output $line 
+                } 
+            } 
+        } finally { 
+            $connection.Close() 
+        } 
+    } 
 }
